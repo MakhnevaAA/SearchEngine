@@ -1,0 +1,27 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    username: root
+    password: DogFox7895
+    url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+indexing-settings:
+  sites:
+    - url: https://dextraparts.ru
+      name: DextraParts.Ru
+    - url: https://nikoartgallery.com
+      name: NikoArtGallery.Com
+
+
+fake-request-settings:
+  userAgent: Chrome/4.0.249.0 Safari/532.5
+  referrer: http://www.google.com
