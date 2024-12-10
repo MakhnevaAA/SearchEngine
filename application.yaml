@@ -21,7 +21,9 @@ indexing-settings:
     - url: https://nikoartgallery.com
       name: NikoArtGallery.Com
 
-
 fake-request-settings:
   userAgent: Chrome/4.0.249.0 Safari/532.5
   referrer: http://www.google.com
+
+limit-on-indexing-page:
+  limit: 2000

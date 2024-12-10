@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.services.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -10,6 +10,7 @@ import searchengine.repositories.IndexForSearchRepository;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
+import searchengine.services.PageIndexingService;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -21,7 +22,7 @@ import java.util.concurrent.atomic.AtomicReference;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class PageIndexingServiceImpl implements PageIndexingService{
+public class PageIndexingServiceImpl implements PageIndexingService {
     private final LemmaFinder lemmaFinder;
     private final LemmaRepository lemmas;
     private final IndexForSearchRepository indexes;

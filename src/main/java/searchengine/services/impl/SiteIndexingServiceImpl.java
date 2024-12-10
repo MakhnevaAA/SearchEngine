@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.services.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +12,7 @@ import searchengine.repositories.IndexForSearchRepository;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
+import searchengine.services.SiteIndexingService;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -45,11 +46,11 @@ public class SiteIndexingServiceImpl implements SiteIndexingService {
         }
         deleteLemmasAndIndexes();
         deleteSitesAndPages();
-        indexingSitePages(webSites);
+        doIndexingSitePages(webSites);
         isIndexing.set(false);
     }
 
-    public void indexingSitePages(List<WebSite> webSites) throws InterruptedException {
+    public void doIndexingSitePages(List<WebSite> webSites) throws InterruptedException {
         List<Thread> indexingThreadList = new ArrayList<>();
         for (WebSite element : webSites) {
             Runnable siteIndexing = () -> {

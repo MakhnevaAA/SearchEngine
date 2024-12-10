@@ -1,6 +1,6 @@
 package searchengine;
 
-import searchengine.services.LemmaFinder;
+import searchengine.services.impl.LemmaFinder;
 
 import java.io.IOException;
 import java.util.Map;

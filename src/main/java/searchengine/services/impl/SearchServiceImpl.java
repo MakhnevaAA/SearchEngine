@@ -1,5 +1,7 @@
-package searchengine.services;
+package searchengine.services.impl;
 
+import comparators.LemmaFrequencyComparator;
+import comparators.PagesRelevanceComparator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
@@ -18,6 +20,7 @@ import searchengine.repositories.IndexForSearchRepository;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
+import searchengine.services.SearchService;
 
 import java.io.IOException;
 import java.util.*;
@@ -27,26 +30,20 @@ import java.util.concurrent.atomic.AtomicReference;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class SearchServiceImpl implements SearchService{
+public class SearchServiceImpl implements SearchService {
     private final LemmaFinder lemmaFinder;
     private final PageRepository pageRepository;
     private final SiteRepository siteRepository;
     private final LemmaRepository lemmaRepository;
     private final IndexForSearchRepository indexForSearchRepository;
+
     @Override
     public ResponseEntity<Object> search(String query, String site, int offset, int limit) {
-        if (query.isEmpty()) {
-            log.error("Передан пустой поисковый запрос");
-            return ResponseEntity.badRequest().body(new BadResponse(false, "Ошибка поиска. Передан пустой поисковый запрос"));
-        }
         WebSite siteForSearch = siteRepository.findByUrl(site);
-
-        if (siteForSearch != null && !siteForSearch.getStatus().equals(StatusType.INDEXED)) {
-            log.error("Сайт не проиндексирован");
-            return ResponseEntity.badRequest().body(new BadResponse(false, "Ошибка поиска. Сайт не проиндексирован"));
+        ResponseEntity<Object> responseEntity = checkForErrorsInTheRequest(query, siteForSearch);
+        if (responseEntity != null) {
+            return responseEntity;
         }
-
-        List<FinderPageDto> finderPages;
         List<RelevanceDto> pagesRelevance;
         List<Page> findingPages = new ArrayList<>();
         List<FinderPageDto> result = new ArrayList<>();
@@ -57,77 +54,60 @@ public class SearchServiceImpl implements SearchService{
             if (lemmasForSearch.isEmpty()) {
                 return ResponseEntity.ok(new SearchGoodResponse(true, 0, new ArrayList<>()));
             }
-            if(lemmasForSearch.size() > 1) {
-                Collections.sort(lemmasForSearch, (o1, o2) -> {
-                    if (o1.getFrequency() < o2.getFrequency()) {
-                        return -1;
-                    } else if (o1.getFrequency() > o2.getFrequency()) {
-                        return 1;
-                    } else return 0;
-                });
-            }
+            Collections.sort(lemmasForSearch, new LemmaFrequencyComparator());
             if (siteForSearch != null) {
                 findingPages = pageRepository.findBySiteId(siteForSearch.getId());
                 findPagesWithLemmas(findingPages, lemmasForSearch, lemmasInQuery.size());
             } else {
-                for (WebSite webSite : siteRepository.findIndexed()) {
-                    List<Page> pagesWithLemmas = pageRepository.findBySiteId(webSite.getId());
-                    findPagesWithLemmas(pagesWithLemmas, lemmasForSearch, lemmasInQuery.size());
-                    findingPages.addAll(pagesWithLemmas);
-                }
+                createFindingPagesListForAllSites(lemmasForSearch, lemmasInQuery, findingPages);
             }
             pagesRelevance = setRelevance(findingPages, lemmasForSearch);
-            Collections.sort(pagesRelevance, (o1, o2) ->  {
-                        if (o1.getRelativeRelevance() > o2.getRelativeRelevance()) {
-                            return -1;
-                        } else if (o1.getRelativeRelevance() < o2.getRelativeRelevance()) {
-                            return 1;
-                        } else return 0;
-                    } );
-            finderPages = createFinderPagesList(pagesRelevance);
-            for (int i = offset; i < offset + limit; i++) {
-                if (i >= finderPages.size()) {
-                    break;
-                }
-                finderPages.get(i).setSnippet(lemmaFinder.getSnippet(pagesRelevance.get(i).getPage().getContent(), lemmasInQuery));
-                result.add(finderPages.get(i));
-            }
+            Collections.sort(pagesRelevance, new PagesRelevanceComparator());
+            createResultPagesList(pagesRelevance, offset, limit, result, lemmasInQuery);
         } catch (IOException io) {
             log.error(io.getMessage());
         }
         return ResponseEntity.ok(new SearchGoodResponse(true, findingPages.size(), result));
     }
 
+    public ResponseEntity<Object> checkForErrorsInTheRequest(String query, WebSite siteForSearch) {
+        if (query.isEmpty()) {
+            log.error("Передан пустой поисковый запрос");
+            return ResponseEntity.badRequest().body(new BadResponse(false, "Ошибка поиска. Передан пустой поисковый запрос"));
+        }
+        if (siteForSearch != null && !siteForSearch.getStatus().equals(StatusType.INDEXED)) {
+            log.error("Сайт не проиндексирован");
+            return ResponseEntity.badRequest().body(new BadResponse(false, "Ошибка поиска. Сайт не проиндексирован"));
+        }
+        return null;
+    }
+
+    public void createFindingPagesListForAllSites(List<Lemma> lemmasForSearch, List<String> lemmasInQuery, List<Page> findingPages) {
+        for (WebSite webSite : siteRepository.findIndexed()) {
+            List<Page> pagesWithLemmas = pageRepository.findBySiteId(webSite.getId());
+            findPagesWithLemmas(pagesWithLemmas, lemmasForSearch, lemmasInQuery.size());
+            findingPages.addAll(pagesWithLemmas);
+        }
+    }
+
+    public void createResultPagesList(List<RelevanceDto> pagesRelevance, int offset, int limit, List<FinderPageDto> result, List<String> lemmasInQuery) throws IOException {
+        List<FinderPageDto> finderPages;
+        finderPages = createFinderPagesList(pagesRelevance);
+        for (int i = offset; i < offset + limit; i++) {
+            if (i >= finderPages.size()) {
+                break;
+            }
+            finderPages.get(i).setSnippet(lemmaFinder.getSnippet(pagesRelevance.get(i).getPage().getContent(), lemmasInQuery));
+            result.add(finderPages.get(i));
+        }
+    }
+
     public List<Lemma> filterLemmasInQuery(List<String> lemmasInQuery, WebSite siteForSearch) {
-        List<Lemma> lemmasForSearch = new ArrayList<>();
-        long countPages = 0;
+        List<Lemma> lemmasForSearch;
         if (siteForSearch == null) {
-            List<WebSite> indexedSites = siteRepository.findIndexed();
-            for (WebSite site : indexedSites) {
-                countPages += pageRepository.getCountPagesOnSite(site.getId());
-            }
-            for (String lemma : lemmasInQuery) {
-                boolean isLemmaExist = lemmaRepository.lemmaExist(lemma) != null;
-                Optional<Integer> countLemmaOnIndexedSite = lemmaRepository.countLemmaOnIndexedSite(lemma);
-                if (countLemmaOnIndexedSite.isEmpty()) {
-                    return new ArrayList<>();
-                }
-                if (isLemmaExist) {
-                    siteRepository.findIndexed().forEach(webSite -> {
-                        Lemma lemmaOnSite = lemmaRepository.getLemmaInSite(lemma, webSite.getId());
-                        if (lemmaOnSite != null) {
-                            lemmasForSearch.add(lemmaOnSite);
-                        }
-                    });
-                }
-            }
+            lemmasForSearch = findLemmaForSearchForAllSites(lemmasInQuery);
         } else {
-            for (String lemma : lemmasInQuery) {
-                boolean isLemmaExist = lemmaRepository.getLemmaInSite(lemma, siteForSearch.getId()) != null;
-                if (isLemmaExist) {
-                    lemmasForSearch.add(lemmaRepository.getLemmaInSite(lemma,siteForSearch.getId()));
-                }
-            }
+            lemmasForSearch = findLemmaForSearchForOneSite(lemmasInQuery,siteForSearch);
         }
         return lemmasForSearch;
     }
@@ -190,5 +170,36 @@ public class SearchServiceImpl implements SearchService{
             finderPages.add(finderPage);
         }
         return  finderPages;
+    }
+
+    public List<Lemma> findLemmaForSearchForAllSites(List<String> lemmasInQuery) {
+        List<Lemma> lemmasForSearch = new ArrayList<>();
+        for (String lemma : lemmasInQuery) {
+            boolean isLemmaExist = lemmaRepository.lemmaExist(lemma) != null;
+            Optional<Integer> countLemmaOnIndexedSite = lemmaRepository.countLemmaOnIndexedSite(lemma);
+            if (countLemmaOnIndexedSite.isEmpty()) {
+                return new ArrayList<>();
+            }
+            if (isLemmaExist) {
+                siteRepository.findIndexed().forEach(webSite -> {
+                    Lemma lemmaOnSite = lemmaRepository.getLemmaInSite(lemma, webSite.getId());
+                    if (lemmaOnSite != null) {
+                        lemmasForSearch.add(lemmaOnSite);
+                    }
+                });
+            }
+        }
+        return lemmasForSearch;
+    }
+
+    public List<Lemma> findLemmaForSearchForOneSite(List<String> lemmasInQuery, WebSite siteForSearch) {
+        List<Lemma> lemmasForSearch = new ArrayList<>();
+        for (String lemma : lemmasInQuery) {
+            boolean isLemmaExist = lemmaRepository.getLemmaInSite(lemma, siteForSearch.getId()) != null;
+            if (isLemmaExist) {
+                lemmasForSearch.add(lemmaRepository.getLemmaInSite(lemma,siteForSearch.getId()));
+            }
+        }
+        return lemmasForSearch;
     }
 }

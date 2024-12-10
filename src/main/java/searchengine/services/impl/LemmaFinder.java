@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.services.impl;
 
 import org.apache.lucene.morphology.LuceneMorphology;
 import org.apache.lucene.morphology.WrongCharaterException;
